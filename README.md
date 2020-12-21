@@ -3,6 +3,16 @@ binlog2sql
 
 从MySQL binlog解析出你要的SQL。根据不同选项，你可以得到原始SQL、回滚SQL、去除主键的INSERT SQL等。
 
+
+Fork说明
+==========
+forked from danfengcao/binlog2sql
+* 修复DML内出现JSON时异常退出问题
+* 修复JSON内部中文显示问题
+* 已测试环境
+    * python 3.7.8
+    * MySQL 8.0.22
+
 用途
 ===========
 

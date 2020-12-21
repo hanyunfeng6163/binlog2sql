@@ -134,10 +134,25 @@ def compare_items(items):
         return '`%s`=%%s' % k
 
 
+def convert(data):
+    """Fix JSON internal Chinese display problem"""
+    if isinstance(data, bytes):
+        return data.decode('utf-8')
+    if isinstance(data, dict):
+        return dict(map(convert, data.items()))
+    if isinstance(data, tuple):
+        return map(convert, data)
+    return data
+
+
 def fix_object(value):
     """Fixes python objects so that they can be properly inserted into SQL queries"""
     if isinstance(value, set):
         value = ','.join(value)
+    elif isinstance(value, list):
+        value = list(map(fix_object, value))
+    elif isinstance(value, dict):
+        value = str(convert(value))
     if PY3PLUS and isinstance(value, bytes):
         return value.decode('utf-8')
     elif not PY3PLUS and isinstance(value, unicode):

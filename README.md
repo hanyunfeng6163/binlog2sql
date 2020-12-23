@@ -9,6 +9,7 @@ Fork说明
 forked from danfengcao/binlog2sql
 * 修复DML内出现JSON时异常退出问题
 * 修复JSON内部中文显示问题
+* 增加基于主键的回滚语句,去除冗余回滚信息
 * 已测试环境
     * python 3.7.8
     * MySQL 8.0.22

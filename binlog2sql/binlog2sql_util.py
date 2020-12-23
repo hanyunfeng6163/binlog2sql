@@ -14,7 +14,6 @@ from pymysqlreplication.row_event import (
     DeleteRowsEvent,
 )
 
-
 if sys.version > '3':
     PY3PLUS = True
 else:
@@ -99,6 +98,8 @@ def parse_args():
                         help='Flashback data to start_position of start_file', default=False)
     parser.add_argument('--back-interval', dest='back_interval', type=float, default=1.0,
                         help="Sleep time between chunks of 1000 rollback sql. set it to 0 if do not need sleep")
+    parser.add_argument('-BK', '--flashback-base-key', dest='flashback_base_key', action='store_true',
+                        help='Flashback data to start_position of start_file based on primary key', default=False)
     return parser
 
 
@@ -179,9 +180,12 @@ def event_type(event):
     return t
 
 
-def concat_sql_from_binlog_event(cursor, binlog_event, row=None, e_start_pos=None, flashback=False, no_pk=False):
+def concat_sql_from_binlog_event(cursor, binlog_event, row=None, e_start_pos=None, flashback=False, no_pk=False,
+                                 flashback_base_key=False):
     if flashback and no_pk:
         raise ValueError('only one of flashback or no_pk can be True')
+    if flashback_base_key and no_pk:
+        raise ValueError('only one of flashback_base_key or no_pk can be True')
     if not (isinstance(binlog_event, WriteRowsEvent) or isinstance(binlog_event, UpdateRowsEvent)
             or isinstance(binlog_event, DeleteRowsEvent) or isinstance(binlog_event, QueryEvent)):
         raise ValueError('binlog_event must be WriteRowsEvent, UpdateRowsEvent, DeleteRowsEvent or QueryEvent')
@@ -189,7 +193,8 @@ def concat_sql_from_binlog_event(cursor, binlog_event, row=None, e_start_pos=Non
     sql = ''
     if isinstance(binlog_event, WriteRowsEvent) or isinstance(binlog_event, UpdateRowsEvent) \
             or isinstance(binlog_event, DeleteRowsEvent):
-        pattern = generate_sql_pattern(binlog_event, row=row, flashback=flashback, no_pk=no_pk)
+        pattern = generate_sql_pattern(binlog_event, row=row, flashback=flashback, no_pk=no_pk,
+                                       flashback_base_key=flashback_base_key)
         sql = cursor.mogrify(pattern['template'], pattern['values'])
         time = datetime.datetime.fromtimestamp(binlog_event.timestamp)
         sql += ' #start %s end %s time %s' % (e_start_pos, binlog_event.packet.log_pos, time)
@@ -202,7 +207,7 @@ def concat_sql_from_binlog_event(cursor, binlog_event, row=None, e_start_pos=Non
     return sql
 
 
-def generate_sql_pattern(binlog_event, row=None, flashback=False, no_pk=False):
+def generate_sql_pattern(binlog_event, row=None, flashback=False, no_pk=False, flashback_base_key=False):
     template = ''
     values = []
     if flashback is True:
@@ -224,7 +229,31 @@ def generate_sql_pattern(binlog_event, row=None, flashback=False, no_pk=False):
                 binlog_event.schema, binlog_event.table,
                 ', '.join(['`%s`=%%s' % x for x in row['before_values'].keys()]),
                 ' AND '.join(map(compare_items, row['after_values'].items())))
-            values = map(fix_object, list(row['before_values'].values())+list(row['after_values'].values()))
+            values = map(fix_object, list(row['before_values'].values()) + list(row['after_values'].values()))
+    elif flashback_base_key is True:
+        # flashback based on primary key
+        if isinstance(binlog_event, WriteRowsEvent):
+            template = 'DELETE FROM `{schema}`.`{table}` WHERE `{primary_key}`=%s;'.format(
+                schema=binlog_event.schema,
+                table=binlog_event.table,
+                primary_key=binlog_event.primary_key,
+            )
+            values = map(fix_object, [row['values'][binlog_event.primary_key]])
+        elif isinstance(binlog_event, DeleteRowsEvent):
+            template = 'INSERT INTO `{0}`.`{1}`({2}) VALUES ({3});'.format(
+                binlog_event.schema, binlog_event.table,
+                ', '.join(map(lambda key: '`%s`' % key, row['values'].keys())),
+                ', '.join(['%s'] * len(row['values']))
+            )
+            values = map(fix_object, row['values'].values())
+        elif isinstance(binlog_event, UpdateRowsEvent):
+            template = 'UPDATE `{schema}`.`{table}` SET {update_value} WHERE `{primary_key}`=%s;'.format(
+                schema=binlog_event.schema,
+                table=binlog_event.table,
+                update_value=', '.join(['`%s`=%%s' % x for x in row['before_values'].keys()]),
+                primary_key=binlog_event.primary_key,
+            )
+            values = map(fix_object, list(row['before_values'].values()) + [row['after_values'][binlog_event.primary_key]])
     else:
         if isinstance(binlog_event, WriteRowsEvent):
             if no_pk:
@@ -251,7 +280,7 @@ def generate_sql_pattern(binlog_event, row=None, flashback=False, no_pk=False):
                 ', '.join(['`%s`=%%s' % k for k in row['after_values'].keys()]),
                 ' AND '.join(map(compare_items, row['before_values'].items()))
             )
-            values = map(fix_object, list(row['after_values'].values())+list(row['before_values'].values()))
+            values = map(fix_object, list(row['after_values'].values()) + list(row['before_values'].values()))
 
     return {'template': template, 'values': list(values)}
 

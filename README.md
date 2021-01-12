@@ -12,7 +12,8 @@ forked from danfengcao/binlog2sql
 * 增加基于主键的回滚语句,去除冗余回滚信息
 * 已测试环境
     * python 3.7.8
-    * MySQL 8.0.22
+    * MySQL 8.0.22 (打开压缩binlog_transaction_compression 不能使用)
+    * MySQL 8.0.21 
 
 用途
 ===========

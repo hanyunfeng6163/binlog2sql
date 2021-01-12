@@ -14,6 +14,14 @@ forked from danfengcao/binlog2sql
     * python 3.7.8
     * MySQL 8.0.22 (打开压缩binlog_transaction_compression 不能使用)
     * MySQL 8.0.21 
+    
+```
+# 根据主键闪回，去除冗余回滚信息
+-BK, --flashback-base-key
+                        Flashback data to start_position of start_file based
+                        on primary key
+```
+https://github.com/DBA-Ray
 
 用途
 ===========
